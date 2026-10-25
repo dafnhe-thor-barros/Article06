@@ -1,0 +1,725 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs,array}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\newtheorem{prop}{Proposição}
+\newcommand{\LDNP}{L_{\mathrm{DNP}}}
+\newcommand{\repo}{\url{https://github.com/dafnhe-thor-barros/article06}}
+
+\title{Acoplamento Térmico--Fadiga em Interconexões BGA de Processadores de
+Inteligência Artificial Orbitais: Estrutura Metodológica, Contratividade do
+Modelo Térmico e Estimação de Vida por Observador}
+\author{Dafnhe Thor Castro de Martins Barros\thanks{Mestrando, PROPECAUT/IFES.
+E-mail: dafnhe.barros@aluno.ifes.edu.br}\and
+Flávio Barcelos Braz da Silva\thanks{Professor Associado, PROPECAUT/IFES.
+E-mail: flavio.silva@ifes.edu.br}}
+\date{25 de outubro de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Propõe-se uma cadeia reprodutível que liga o histórico térmico orbital à fadiga
+de juntas BGA: (i) modelo térmico de dois nós (die e PCB) com geometria orbital
+anual, eclipse analítico e dois modos de apontamento do radiador; (ii)
+cinemática diferencial $\alpha_cT_c-\alpha_sT_s$; (iii) contagem
+\emph{rainflow}, vida de Engelmaier e dano de Miner; (iv) Weibull de sistema em
+série; (v) estimação de estados por EKF discreto. Demonstra-se que, em um
+conjunto invariante, o modelo térmico é contrativo na métrica de energia, o que
+garante regime periódico único, e que o par é localmente observável. Todos os
+parâmetros do modelo térmico são \textbf{premissas ilustrativas}. No modelo
+estendido (três órbitas, dois modos de apontamento, três políticas de carga com
+o mesmo duty cycle), a razão entre as vidas anuais das fases de carga
+\emph{mid} e \emph{noon} variou de 1,65 a 15,6; essa ordenação se manteve em
+16 de 16 amostras de um Monte Carlo paramétrico em cada uma de duas órbitas. A
+melhor atitude depende da órbita. A razão entre a vida estimada por EKF e a
+real ficou entre 0,23 e 1,02 conforme o cenário, de modo que o viés não é
+uniforme. Os resultados são computacionais e condicionais: não há ensaio.
+\end{abstract}
+
+\begin{quote}\small
+\textbf{Abstract.} A reproducible chain linking the orbital thermal history to
+BGA solder-joint fatigue is proposed: a two-node (die/PCB) thermal model with
+annual orbit geometry, analytical eclipse and two radiator pointing modes;
+differential kinematics; rainflow counting with Engelmaier life and Miner
+damage; series-system Weibull; and a discrete EKF. The thermal model is shown
+to be contractive on an invariant set, and locally observable. All thermal
+parameters are \emph{illustrative assumptions}. In the extended model (three
+orbits, two pointing modes, three load policies with equal duty cycle), the
+ratio between annual lives of the \emph{mid} and \emph{noon} load phases ranged
+from 1.65 to 15.6, and this ordering held in 16 of 16 samples of a parametric
+Monte Carlo for each of two orbits. The best attitude depends on the orbit. The
+ratio of EKF-estimated to true life ranged from 0.23 to 1.02 depending on the
+scenario, so the bias is not uniform. Results are computational only.
+\end{quote}
+
+\noindent\textbf{Palavras-chave:} BGA; fadiga de solda; Engelmaier; rainflow;
+contração; filtro de Kalman estendido; ângulo beta; confiabilidade espacial.
+
+\section{Introdução}
+O processamento embarcado de IA em satélites \cite{nasa2025,gao2026} eleva
+fluxos de calor e o acoplamento térmico entre aceleradores; o relatório da
+GAO \cite{gao2026} destaca que o resfriamento de hardware no espaço é pouco
+eficiente, o que constitui desafio de engenharia. Chen et al.~\cite{chen2026}
+propõem, em um \emph{position paper}, um balanceamento de carga ciente de
+acoplamento térmico e argumentam que ele reduz o estresse térmico (leitura
+limitada ao resumo; a existência de validação experimental da durabilidade
+mecânica não foi confirmada). Componentes COTS não equivalem a componentes
+qualificados para voo \cite{ecss6013,ecss6015}. Em BGA, o descasamento de CTE
+gera deformação cíclica de cisalhamento, com plasticidade e fluência
+\cite{ross1991,engelmaier1983}. A literatura inclui análises por elementos
+finitos do efeito de vazios \cite{hu2023} e a previsão de vida e do
+comportamento de intermetálicos de SAC305 em ciclagem acelerada
+\cite{apalowo2024}.
+
+\textbf{Lacuna.} A literatura de gerenciamento térmico de IA orbital não
+fecha o laço até o dano por fadiga da junta; a literatura de fadiga não trata a
+carga computacional como variável de projeto. \textbf{Contribuições
+(computacionais e condicionais):}
+\begin{enumerate}
+\item cinemática diferencial com temperaturas distintas de pacote e placa
+(Eq.~\ref{eq:X});
+\item invariância e contratividade do modelo térmico de dois nós
+(Seção~\ref{sec:contr}), com a contração observada em simulação, e
+observabilidade local (Seção~\ref{sec:obs});
+\item avaliação da vida anual com $\beta$ variável, por órbita, modo de
+apontamento e política de carga, com validação numérica da discretização e
+teste de robustez paramétrica (Seção~\ref{sec:ext});
+\item decomposição do viés da vida estimada por observador entre ruído,
+quantização e erro de modelo, em dois modelos térmicos
+(Seções~\ref{sec:ekfext} e~\ref{sec:ekf});
+\item incerteza paramétrica e sensibilidade à fase da carga no modelo de
+referência (Seção~\ref{sec:ref}).
+\end{enumerate}
+O código que gera todas as tabelas está em \repo{}.
+
+\section{Modelo termomecânico de fadiga}
+\subsection{Geometria}
+Para pacote $28\times28$~mm, $\LDNP=\tfrac12\sqrt{L_x^2+L_y^2}=19{,}799$~mm,
+adotado como 19,80~mm, distância ao canto do pacote. Resultados de layout
+\cite{razzaq2025} indicam que, com esferas removidas na periferia, as falhas
+migram do canto para regiões mais uniformes sob o die; o valor de $\LDNP$ para
+a esfera crítica de um arranjo real deve vir da geometria completa.
+
+\subsection{Cinemática diferencial}
+Seja $T_c$ a temperatura do pacote, $T_s$ a do substrato e $T_0$ a referência
+livre de tensão:
+\begin{equation}
+X(t)=\alpha_c\,(T_c-T_0)-\alpha_s\,(T_s-T_0),\qquad
+\Delta\gamma=F\,\frac{\LDNP}{h}\,\Delta X. \label{eq:X}
+\end{equation}
+$\Delta X$ é o intervalo pico a pico de $X$ em um ciclo extraído; $T_0$ não
+afeta $\Delta X$. Se $T_c=T_s$, recai-se na forma clássica
+$\Delta\gamma=F\,\LDNP\,\Delta\alpha\,\Delta T/h$.
+Com $F=0{,}90$, $\Delta\alpha=14\times10^{-6}$~K$^{-1}$, $\LDNP=19{,}80$~mm e
+$h=0{,}18$~mm, $\Delta\gamma=1{,}386\times10^{-3}\,\Delta T$ (K).
+
+\subsection{Vida de Engelmaier}
+\begin{equation}
+N_f=\tfrac12\left(\frac{\Delta\gamma}{2\varepsilon'_f}\right)^{1/c},\quad
+c=-0{,}442-6{,}0\times10^{-4}T_{sj}+1{,}74\times10^{-2}\ln(1+f_{cpd}),
+\label{eq:eng}
+\end{equation}
+com $T_{sj}$ (\textdegree C) a temperatura média cíclica da junta e $f_{cpd}$ a
+frequência de ciclagem em ciclos/dia \cite{engelmaier1983}. A relação é empírica
+e foi calibrada para \emph{leadless chip carriers} com SnPb. As temperaturas
+médias obtidas nas simulações (médias anuais de $-22{,}5$ a $+33{,}4$~\textdegree C)
+estão provavelmente fora do domínio calibrado; o domínio exato não pôde ser
+conferido (o texto de \cite{engelmaier1983} não foi lido) e deve ser confirmado
+na fonte. A razão de vidas para dois valores de ductilidade, com o restante
+fixo, é
+\begin{equation}
+\frac{N_{f,2}}{N_{f,1}}=\left(\frac{2\varepsilon'_{f,2}}{2\varepsilon'_{f,1}}\right)^{-1/c}.
+\label{eq:razao}
+\end{equation}
+Para $c=-0{,}4085$, $N_f\propto\Delta T^{1/c}\approx\Delta T^{-2{,}45}$.
+
+\subsection{Contagem de ciclos e dano acumulado}
+A série $X(t)$ de um período em regime é reduzida a pontos de inversão e
+processada por \emph{rainflow} \cite{astm1049}. Cada ciclo $i$ (inteiro ou meio)
+tem intervalo $\Delta X_i$, que fornece $\Delta\gamma_i$ pela Eq.~(\ref{eq:X}) e
+$N_{f,i}$ pela Eq.~(\ref{eq:eng}). O dano por período e a vida são
+\begin{equation}
+D=\sum_i\frac{n_i}{N_{f,i}},\qquad \text{vida}=\frac1D\ \text{períodos orbitais}.
+\label{eq:miner}
+\end{equation}
+A regra linear de Palmgren--Miner \cite{miner1945} é uma hipótese; $D=1$ não é
+lei física e ignora sequência e interação fluência--fadiga. A transferência de
+vida entre perfis térmicos é classicamente tratada por fatores de aceleração
+\cite{norris1969}, que dependem de calibração dedicada.
+
+\subsection{Confiabilidade de sistema em série}
+Com $R_i(N)=\exp[-(N/\eta)^\beta]$ para cada junta e $n$ juntas independentes e
+idênticas, o pacote falha no primeiro elo:
+\begin{equation}
+R_{pkg}(N)=\exp\!\big[-n\,(N/\eta)^\beta\big],\qquad \eta_{pkg}=\eta\,n^{-1/\beta}.
+\end{equation}
+A vida característica $\eta$ só pode ser igualada à vida determinística após
+calibração com falhas e censura \cite{weibull1951,meeker1998}; não se apresenta
+curva de Weibull ajustada.
+
+\section{Modelo térmico orbital}
+\subsection{Geometria orbital e ângulo beta anual}
+Órbita circular de altitude $h_o$, período $T_o$, inclinação $i$ e ascensão
+reta do nodo $\Omega$. O ângulo $\beta$ entre o vetor solar $\hat s$ e o plano
+orbital satisfaz
+\begin{equation}
+\sin\beta=\hat s\cdot\hat n,\qquad
+\hat n=(\sin i\sin\Omega,\,-\sin i\cos\Omega,\,\cos i), \label{eq:beta}
+\end{equation}
+e o nodo precessa por $J_2$ segundo
+$\dot\Omega=-\tfrac32 J_2\,(R_E/a)^2\,n\cos i$ \cite{vallado}. Para
+órbita heliossíncrona, $i=97{,}40^\circ$ e $\dot\Omega=+0{,}9856^\circ$/dia.
+O vetor solar usa longitude média com um termo de equação do centro e
+obliquidade de $23{,}4393^\circ$ (efeméride simplificada, de fonte não
+consultada; erro de $\beta$ da ordem de décimos de grau). A ascensão do nodo
+inicial é fixada por
+$\Omega_0=\alpha_{\odot}(\text{dia }80)+(\mathrm{LTAN}-12\,\mathrm{h})\cdot15^\circ/\mathrm{h}$.
+Com sombra cilíndrica \cite{vallado}, a fração de eclipse é
+\begin{equation}
+f_e=\frac1\pi\arccos\!\left(\frac{\sqrt{h_o^2+2R_Eh_o}}{(R_E+h_o)\cos\beta}\right),
+\qquad |\beta|<\beta^*=\arcsin\frac{R_E}{R_E+h_o}, \label{eq:fe}
+\end{equation}
+e $f_e=0$ caso contrário. Para $h_o=500$~km: $T_o=94{,}62$~min, $f_e=0{,}378$
+em $\beta=0$ (35,75~min), $\beta^*=68{,}02^\circ$ e 15,22 órbitas/dia.
+
+\begin{table}[h]\centering\small
+\caption{$|\beta|$ ao longo do ano, $h_o=500$~km.}
+\label{tab:beta}
+\begin{tabular}{@{}lcccc@{}}\toprule
+Órbita & $|\beta|_{min}$ & $|\beta|_{max}$ & Dias com eclipse & Eclipse máx.\ (min)\\\midrule
+SSO, LTAN 6~h (dawn-dusk) & 59,08\textdegree & 88,82\textdegree & 102 & 22,73\\
+SSO, LTAN 10~h30 & 13,47\textdegree & 23,63\textdegree & 365 & 35,41\\
+$i=51{,}6^\circ$, precessando & 0,30\textdegree & 74,82\textdegree & 349 & 35,75\\
+\bottomrule\end{tabular}\end{table}
+Verificações internas: a precessão heliossíncrona resulta em $+0{,}9856^\circ$/dia;
+$\beta_{max}=74{,}8^\circ$ para $i=51{,}6^\circ$ coincide com $i+23{,}4^\circ$;
+e $\beta_{min}=59{,}08^\circ$ na dawn-dusk coincide com a estimativa analítica
+$90^\circ-23{,}44^\circ-7{,}40^\circ=59{,}16^\circ$. \textbf{Uma órbita
+dawn-dusk com LTAN exato de 6~h a 500~km tem, portanto, temporada de eclipse};
+$f_e=0$ ao longo do ano é uma idealização, não uma propriedade da órbita.
+
+\subsection{Modos de apontamento do radiador e aporte externo}
+A atitude entra \textbf{apenas como condição de contorno térmica}: o radiador
+tem área $A_r$, absortividade solar $\alpha_r$ e emissividade $\varepsilon$, e
+dois modos de apontamento são considerados. Com $\phi=2\pi t/T_o$ (eclipse
+centrado em $\phi=\pi$), $S_0$ a constante solar, $Q_{IR}$ o fluxo infravermelho
+terrestre médio, $\chi_{ecl}$ o indicador de eclipse e
+$\rho=\arcsin\frac{R_E}{R_E+h_o}$:
+\begin{align}
+\text{zenith:}\quad Q_{ext}&=(1-\chi_{ecl})\,\alpha_rS_0A_r\,\max(0,\cos\beta\cos\phi),
+\label{eq:zen}\\
+\text{lateral:}\quad Q_{ext}&=(1-\chi_{ecl})\,\alpha_rS_0A_r\,|\sin\beta|
++\varepsilon F_{lat}Q_{IR}A_r,\quad F_{lat}=\frac{\rho-\sin\rho\cos\rho}{\pi}.
+\label{eq:lat}
+\end{align}
+O fator $F_{lat}$ foi derivado geometricamente para uma placa plana cuja normal
+é perpendicular ao nadir, e conferido por quadratura numérica (300 passos), com
+diferença inferior a $10^{-5}$ em relação à forma fechada
+($F_{lat}=0{,}267398$; para a face voltada ao nadir, $\sin^2\rho=0{,}859896$).
+A conferência valida a derivação contra a definição, não contra uma fonte de
+controle térmico. Um terceiro modo, com radiador sempre sem incidência solar,
+foi \textbf{excluído}: é uma idealização que não produz ciclo térmico e dá vida
+sem sentido físico. \textbf{Não há dinâmica de atitude}: matriz de inércia,
+torques de perturbação (gradiente de gravidade, pressão de radiação solar,
+arrasto, magnético), determinação e controle de atitude estão fora do escopo e
+são tratados, por exemplo, em \cite{markley2014}.
+
+\subsection{Equações térmicas}
+Com $x=[T_c\ T_s]^\top$:
+\begin{align}
+C_c\dot T_c&=P(t)-G\,(T_c-T_s), \label{eq:tc}\\
+C_s\dot T_s&=G\,(T_c-T_s)+Q_{ext}(t)+P_{oth}-\varepsilon\sigma A_rT_s^4. \label{eq:ts}
+\end{align}
+$P(t)$ é a dissipação do acelerador. Três políticas de carga, todas com
+potência média de 48~W (duty cycle de 35\%): \emph{const} (potência
+constante), \emph{noon} (janela de carga de 35\% do período centrada em
+$\phi=0$) e \emph{mid} (centrada no eclipse, $\phi=\pi$). A integração usa RK4
+com passo de 10--25~s, frente a $\tau_{die}=C_c/G=75$~s.
+
+\subsection{Invariância e contratividade}\label{sec:contr}
+Seja $k=\varepsilon\sigma A_r$, $P(t)\ge P_{idle}$,
+$Q_{ext}(t)\in[Q_{min},Q_{max}]$ e $T_{inv}=\big((Q_{min}+P_{oth})/k\big)^{1/4}$.
+
+\begin{prop}[Invariância]\label{prop:inv}
+Se $P_{idle}/C_c>(Q_{max}+P_{oth})/C_s$, o conjunto convexo e fechado
+$\Omega=\{T_c\ge T_s\ge T_{inv}\}$ é positivamente invariante.
+\end{prop}
+\begin{proof}
+Em $T_c=T_s$: $C_c\dot T_c=P\ge P_{idle}$ e
+$C_s\dot T_s=Q_{ext}+P_{oth}-kT_s^4\le Q_{max}+P_{oth}$, logo
+$\dot T_c-\dot T_s\ge P_{idle}/C_c-(Q_{max}+P_{oth})/C_s>0$. Em
+$T_s=T_{inv}$ com $T_c\ge T_s$: $C_s\dot T_s\ge Q_{min}+P_{oth}-kT_{inv}^4=0$.
+O campo é localmente Lipschitz em $x$ e seccionalmente contínuo em $t$; a
+invariância segue do teorema de Nagumo--Bony--Brezis.
+\end{proof}
+
+\begin{prop}[Contração e regime periódico]\label{prop:contr}
+Em $\Omega$, duas trajetórias sob a mesma entrada satisfazem
+$\|\delta x(t)\|_W\le e^{-\lambda t/C_{max}}\|\delta x(0)\|_W$, com
+$W=\mathrm{diag}(C_c,C_s)$, $C_{max}=\max(C_c,C_s)$, $r_{min}=4kT_{inv}^3$ e
+\[
+\lambda=\tfrac12\Big(2G+r_{min}-\sqrt{r_{min}^2+4G^2}\Big)>0.
+\]
+Para entradas periódicas, existe uma única solução periódica em $\Omega$, e ela
+é globalmente atrativa em $\Omega$.
+\end{prop}
+\begin{proof}
+O Jacobiano é
+$J=\begin{bmatrix}-G/C_c&G/C_c\\G/C_s&-(G+r)/C_s\end{bmatrix}$ com
+$r=4kT_s^3\ge r_{min}$. Então
+$WJ=-\begin{bmatrix}G&-G\\-G&G+r\end{bmatrix}$ é simétrica. Para
+$V=\delta x^\top W\delta x$,
+$\dot V=2\,\delta x^\top(WJ)\,\delta x\le-2\lambda(r)\|\delta x\|^2\le-2(\lambda/C_{max})V$,
+em que $\lambda(r)$ é o menor autovalor de $-WJ$, crescente em $r$. Como
+$\Omega$ é convexo, a desigualdade vale ao longo do segmento entre trajetórias
+\cite{lohmiller1998}. A aplicação de Poincaré sobre um período é contração de
+fator $e^{-\lambda T_o/C_{max}}<1$ em $\Omega$ (completo), e leva $\Omega$ em si
+mesmo (Proposição~\ref{prop:inv}); o ponto fixo único segue do teorema de
+Banach.
+\end{proof}
+\begin{table}[h]\centering\small
+\caption{Constantes das Proposições~\ref{prop:inv} e~\ref{prop:contr}
+($P_{idle}/C_c=0{,}0667$) e fator de contração por órbita, garantido e
+observado.}
+\label{tab:contr}
+\begin{tabular}{@{}lcccccc@{}}\toprule
+Modelo & $(Q_{max}{+}P_{oth})/C_s$ & $T_{inv}$ (K) & $\lambda$ (W/K) & Taxa (s$^{-1}$) & Fator garantido & Fator observado\\\midrule
+Referência ($\beta=0$) & 0,0208 & 218,57 & 0,4717 & $7{,}86\times10^{-5}$ & 0,640 & $\approx0{,}15$\\
+Estendido, zenith & 0,0220 & 187,84 & 0,3067 & $5{,}11\times10^{-5}$ & 0,748 & $\le0{,}272$\\
+Estendido, lateral & 0,0265 & 187,84 & 0,3067 & $5{,}11\times10^{-5}$ & 0,748 & $\le0{,}272$\\
+\bottomrule\end{tabular}\end{table}
+A condição da Proposição~\ref{prop:inv} vale nos três casos. No modelo
+estendido, a razão entre as normas $W$ de duas trajetórias (condições iniciais
+$[285;285]$ e $[320;255]$~K), medida a cada órbita, convergiu para valores
+entre $0{,}091$ e $0{,}272$ nos seis casos testados (zenith/mid, zenith/noon,
+lateral/mid e lateral/noon em $\beta=20^\circ$; zenith/const e lateral/mid em
+$\beta=70^\circ$), dentro do limite garantido de $0{,}748$. Com os parâmetros
+perturbados, as condições devem ser reverificadas.
+
+\section{Observabilidade, amostragem e estimação}
+\subsection{Observabilidade}\label{sec:obs}
+Linearizando em torno da trajetória, $A=J$. Com diodo no die, $C=[1\ 0]$,
+$\mathcal O=[C;\,CA]$ tem determinante $G/C_c\neq0$; com termistor na PCB,
+$C=[0\ 1]$, o determinante é $-G/C_s\neq0$. O posto é 2 em ambos os casos
+(observabilidade local). A temperatura \emph{da junta} não é medida e é inferida
+via modelo.
+
+\subsection{EKF discreto}
+Predição por RK4 sobre o modelo nominal; covariância propagada com
+$F_k=I+\Delta t\,J$ e $Q_n=\mathrm{diag}(10^{-4},4\times10^{-4})\Delta t$;
+atualização sequencial com $R=\sigma^2+q^2/12$ (ruído branco e quantização
+uniforme de passo $q$). A estabilidade estocástica do EKF discreto depende de
+limites de covariância e de erro inicial pequeno \cite{reif1999}; \textbf{não}
+se apresenta prova para o laço fechado.
+
+\subsection{Amostragem}
+O ganho do modelo de primeira ordem do die é
+$|H|=1/\sqrt{1+(2\pi f\tau_{die})^2}$. Transientes rápidos de carga são
+atenuados fisicamente antes do sensor, \emph{no modelo concentrado}; gradientes
+locais de ms no nível do die não são captados. A fundamental orbital é
+$\approx0{,}176$~mHz. Testou-se o passo de medição de 10~s nos estudos
+reportados; passos de até 600~s foram explorados em rodadas preliminares, não
+reproduzidas no código final.
+
+\section{Premissas assumidas}\label{sec:prem}
+Todos os valores da Tabela~\ref{tab:prem}, exceto os dois primeiros grupos, são
+\textbf{premissas ilustrativas sem fonte verificada}, escolhidas para demonstrar
+a metodologia. As vidas absolutas dependem delas e devem ser lidas como escala
+relativa.
+\begin{table}[h]\centering\small
+\caption{Premissas do modelo. ``Orig.'' = premissa do manuscrito original.}
+\label{tab:prem}
+\begin{tabular}{@{}lll@{}}\toprule
+Parâmetro & Valor & Status\\\midrule
+$F$, $\LDNP$, $h$ & 0,90; 19,80 mm; 0,18 mm & Orig.\\
+$\Delta\alpha=\alpha_s-\alpha_c$ & 14 ppm/K (2 e 16) & Orig.; valores individuais: ordem típica\\
+$2\varepsilon'_f$ & 0,65 & Valor associado a SnPb em \cite{engelmaier1983}; confirmar\\
+$h_o$ & 500 km & Ilustrativo\\
+$i$ & SSO (derivada, 97,40\textdegree); 51,6\textdegree & Ilustrativo\\
+$C_c$, $C_s$, $G$ & 300; 6000 J/K; 4 W/K & Ilustrativo\\
+$\varepsilon$, $A_r$, $P_{oth}$ & 0,85; 0,5 m$^2$; 30 W & Ilustrativo\\
+$P_{idle}$, $P_{act}$, duty & 20 W; 100 W; 35\% & Ilustrativo\\
+$S_0$, $Q_{IR}$ (estendido) & 1361 W/m$^2$; 237 W/m$^2$ & Valores usuais; fonte a inserir\\
+$\alpha_r$ (estendido) & 0,15 & Ilustrativo\\
+$Q_{sol}$, $Q_{IR}$ (referência, $\beta=0$) & 70 W; 25 W (constantes) & Ilustrativo\\
+SSO idealizada (referência) & $Q_{ext}=68{,}55$ W, sem eclipse & Simplificação\\
+Sensores & $\sigma/q$: 0,5/0,5 K (die); 1/1 K (PCB) & Ilustrativo\\
+\bottomrule\end{tabular}\end{table}
+
+\section{Resultados do modelo estendido}\label{sec:ext}
+\subsection{Dano por órbita em função de $\beta$}
+\begin{table}[h]\centering\small
+\caption{Dano por órbita $D$ ($\times10^{-4}$), modo zenith, em função de
+$\beta$.}
+\label{tab:dbeta}
+\begin{tabular}{@{}lcccccc@{}}\toprule
+Carga & $0^\circ$ & $30^\circ$ & $60^\circ$ & $68^\circ$ & $75^\circ$ & $90^\circ$\\\midrule
+const & 2,85 & 1,91 & 0,414 & 0,186 & 0,0675 & $\approx0$\\
+noon & 15,9 & 13,2 & 7,28 & 5,75 & 4,53 & 2,46\\
+mid & 1,01 & 0,860 & 1,19 & 1,45 & 1,73 & 2,45\\
+\bottomrule\end{tabular}\end{table}
+Em $\beta=90^\circ$ não há eclipse nem variação do aporte solar no modo zenith,
+e as políticas \emph{noon} e \emph{mid} dão danos praticamente iguais
+(2,46 e 2,45), como esperado por simetria. Para $\beta$ baixo, a fase
+\emph{mid} (carga durante o eclipse) tem dano menor; o cruzamento ocorre em
+$\beta$ intermediário.
+
+\subsection{Vida anual}\label{sec:anual}
+A vida anual soma o dano diário, com um $\beta$ por dia (dano por órbita
+interpolado linearmente em uma grade de 34 valores de $\beta$, adensada nas
+faixas visitadas pelas órbitas e em torno de $\beta^*$) multiplicado por
+15,22 órbitas/dia:
+\begin{table}[h]\centering\small
+\caption{Vida anual (anos) por órbita, atitude e política de carga.}
+\label{tab:anual}
+\begin{tabular}{@{}llccc@{}}\toprule
+Órbita & Atitude & const & noon & mid\\\midrule
+SSO 6~h & zenith & 13,7 & 0,377 & 1,04\\
+SSO 6~h & lateral & 2,71 & 0,302 & 0,500\\
+SSO 10~h30 & zenith & 0,753 & 0,123 & 1,92\\
+SSO 10~h30 & lateral & 4,10 & 0,311 & 1,56\\
+$51{,}6^\circ$ & zenith & 1,03 & 0,147 & 1,83\\
+$51{,}6^\circ$ & lateral & 1,49 & 0,250 & 1,49\\
+\bottomrule\end{tabular}\end{table}
+A razão entre as vidas de \emph{mid} e \emph{noon} (mesmo duty cycle) é 2,75
+(SSO 6~h, zenith), 1,65 (SSO 6~h, lateral), 15,6 (SSO 10~h30, zenith), 5,00
+(SSO 10~h30, lateral), 12,5 ($51{,}6^\circ$, zenith) e 5,98 ($51{,}6^\circ$,
+lateral). Com carga pulsada, a vida fica entre 0,12 e 1,92 ano; com carga
+constante, entre 0,75 e 13,7 anos. Em SSO 6~h o modo zenith vence o lateral
+com carga constante (13,7 contra 2,71), e em SSO 10~h30 ocorre o inverso (0,753
+contra 4,10), de modo que a melhor atitude depende da órbita. Isso é resultado
+do modelo ilustrativo; sua função é mostrar que o espaço de projeto (órbita,
+atitude, fase da carga) deve ser triado em conjunto.
+
+\subsection{Convergência e validação numérica}
+\emph{Convergência da grade.} A vida de SSO 10~h30, lateral, carga constante,
+variou $3{,}49\to3{,}84\to4{,}10$ anos ao refinar a grade de 15, 23 e 34
+pontos; uma grade grossa, portanto, enviesa o resultado, e a incerteza
+residual de discretização não foi quantificada além desse comportamento. As
+conclusões qualitativas não dependem dessa variação. \emph{Interpolação.}
+Comparando a vida obtida por interpolação com a obtida por simulação direta
+nos mesmos dias, o erro ficou entre $-1{,}1\%$ e $+0{,}33\%$ nos seis casos
+testados. \emph{Grade do Monte Carlo.} A grade de 5--6 pontos usada no
+Monte Carlo difere da grade fina em $-1{,}7\%$, $-0{,}7\%$, $+5{,}7\%$ e
+$-0{,}03\%$ nos quatro casos comparados.
+
+\subsection{Robustez paramétrica (Monte Carlo)}\label{sec:mcext}
+Para cada uma de duas órbitas, $N=16$ amostras log-normais ($\sigma$ de $\ln$:
+$C_c$, $C_s$ 15\%; $G$ 25\%; $\varepsilon$, $A_r$ 5\%; $\alpha_r$ 30\%;
+$S_0$ 2\%; $Q_{IR}$, $P_{oth}$ 20\%) e as seis combinações de atitude e carga.
+As incertezas de $2\varepsilon'_f$, $F$ e $h$ não foram variadas: escalam as
+vidas por um fator aproximadamente comum e não alteram a razão entre políticas,
+exceto pela dependência de $c$ em $T_{sj}$.
+\begin{table}[h]\centering\small
+\caption{Monte Carlo do modelo estendido ($N=16$ por órbita; grade grossa).}
+\label{tab:mcext}
+\begin{tabular}{@{}lcccc@{}}\toprule
+Órbita & zenith $>$ lateral (const, noon, mid) & mid $>$ noon (zenith, lateral) & Razão mid/noon, mediana [mín--máx] & Melhor combinação\\\midrule
+SSO 10~h30 & 0, 0, 10 de 16 & 16, 16 de 16 & 11,9 [4,88--16,9]; 4,33 [2,02--10,1] & lateral/const: 15; lateral/mid: 1\\
+SSO 6~h & 16, 16, 16 de 16 & 16, 16 de 16 & 2,86 [1,72--7,78]; 1,63 [1,29--2,28] & zenith/const: 15; zenith/mid: 1\\
+\bottomrule\end{tabular}\end{table}
+A ordenação \emph{mid} $>$ \emph{noon} vale em todas as amostras
+(16 de 16; limite inferior unilateral de 95\% para a proporção $\approx0{,}83$,
+dado por $0{,}05^{1/16}$). Em SSO 6~h, zenith vence lateral em todas as
+amostras e políticas; em SSO 10~h30, lateral vence zenith com carga constante
+e \emph{noon} em todas as amostras, mas o resultado com \emph{mid} é
+inconclusivo (10 de 16). $N=16$ é pequeno e não inclui a órbita de
+$51{,}6^\circ$; os percentis das razões são aproximados.
+
+\subsection{Ciclos sazonais lentos}
+A série anual da média orbital de $X$ foi processada por \emph{rainflow} como
+um ciclo adicional de período de um ano. O dano correspondente, relativo ao
+dano orbital anual, foi de 0,015\% a 0,56\% na órbita SSO 6~h, até 0,043\% na
+SSO 10~h30, e de 0,046\% a 9,4\% na órbita de $51{,}6^\circ$ (máximo em
+lateral, carga constante e \emph{mid}). A Eq.~(\ref{eq:eng}) com
+$f_{cpd}=1/365{,}25$ está duplamente fora do domínio calibrado; o resultado é
+apenas ordem de grandeza e indica que desconsiderar esses ciclos subestima o
+dano em menos de 10\% nos casos testados.
+
+\subsection{Temperaturas}
+As temperaturas médias cíclicas da junta, em média anual, ficaram entre
+$-22{,}5$~\textdegree C (zenith, SSO 6~h) e $+33{,}4$~\textdegree C (lateral,
+SSO 6~h), isto é, provavelmente fora do domínio calibrado da
+Eq.~(\ref{eq:eng}); as vidas absolutas devem ser lidas com essa ressalva.
+
+\subsection{Estimação no modelo estendido}\label{sec:ekfext}
+Em $\beta=20^\circ$, com a planta ``real'' perturbada ($G$ $+20\%$, $C_s$
+$-10\%$, $\varepsilon$ $+5\%$) e o filtro com viés de $+10\%$ em $Q_{ext}$,
+cinco sementes de ruído:
+\begin{table}[h]\centering\small
+\caption{Razão vida estimada/real (média [faixa]) e RMSE de $T_s$ (K), $\beta=20^\circ$.}
+\label{tab:ekfext}
+\begin{tabular}{@{}lccc@{}}\toprule
+Caso & zenith/noon & zenith/mid & lateral/mid\\\midrule
+Ruído, planta nominal & 0,943 [0,932--0,952] & 0,869 [0,866--0,876] & 0,852 [0,830--0,869]\\
+Sensores quase perfeitos$^\dagger$ & 1,000 & 1,000 & 1,000\\
+Ruído e erro de modelo (2 sensores) & 1,005 [0,995--1,014] & 0,675 [0,654--0,686] & 0,734 [0,721--0,757]\\
+Idem, só diodo no die & 1,021 [1,007--1,035] & 0,565 [0,557--0,571] & 0,639 [0,621--0,658]\\
+RMSE $T_s$ (2 sensores / só diodo) & 1,44 / 2,22 & 1,49 / 2,32 & 1,46 / 2,27\\
+\bottomrule\end{tabular}\\[2pt]
+{\footnotesize $^\dagger$ $\sigma=q=10^{-6}$~K nos dois estados; o filtro segue a
+medição, de modo que este caso não isola o efeito do erro de modelo.}\end{table}
+O viés \textbf{depende do cenário}: com a fase \emph{noon} (ciclos grandes) a
+vida estimada ficou dentro de $\approx6\%$ da real, e com a fase \emph{mid}
+(ciclos pequenos) caiu a 0,57--0,87. Ruído e quantização atuaram
+conjuntamente e não foram separados. Uma explicação plausível, não isolada, é
+que ciclos espúrios induzidos pelo ruído pesam mais quando os ciclos reais são
+pequenos. O erro de modelo, combinado ao ruído, reduziu a razão (por exemplo,
+de 0,869 para 0,675 em zenith/mid), e usar um único sensor a reduziu ainda mais.
+
+\section{Resultados do modelo de referência ($\beta=0$)}\label{sec:ref}
+O modelo de referência usa aportes constantes ($Q_{sol}=70$~W, $Q_{IR}=25$~W) e
+$\beta=0$; é empregado nos estudos de fase, incerteza e estimação. Sua ``SSO''
+é uma idealização (sem eclipse), não a órbita dawn-dusk da Tabela~\ref{tab:beta}.
+
+\subsection{Cenários}
+\begin{table}[h]\centering\small
+\caption{Cenários (carga pulsada com janela de 35\% do período, salvo ``const'').}
+\begin{tabular}{@{}lccccc@{}}\toprule
+Cenário & $\Delta T_c$ (K) & $\Delta T_s$ (K) & $\Delta\gamma_{max}$ (\%) & $T_{sj}$ (\textdegree C) & Vida (anos)\\\midrule
+LEO, carga alinhada ao sol & 44,07 & 25,28 & 3,447 & 11,7 & 0,138\\
+LEO, carga alinhada ao eclipse & 21,42 & 2,52 & 0,666 & 12,1 & 9,18\\
+LEO, carga constante (48 W) & 13,52 & 13,93 & 1,940 & 12,0 & 0,581\\
+SSO idealizada, carga pulsada & 34,22 & 14,93 & 2,198 & 12,0 & 0,453\\
+SSO idealizada, carga constante & 0,003 & 0,003 & $\approx0$ & 12,1 & ---\\
+\bottomrule\end{tabular}\end{table}
+Em SSO idealizada com carga constante a oscilação orbital é desprezível
+(resíduo numérico) e a vida passa a ser governada por outros ciclos, não
+modelados.
+
+\subsection{Sensibilidade à fase da carga}
+Desloca-se a janela de carga em relação à referência (1\% após o início do
+eclipse):
+\begin{table}[h]\centering\small
+\caption{Vida (anos) versus deslocamento da janela de carga (min).}
+\label{tab:fase}
+\begin{tabular}{@{}lccccccccccccc@{}}\toprule
+Desl. & $-60$ & $-45$ & $-30$ & $-20$ & $-10$ & $-5$ & 0 & 5 & 10 & 20 & 30 & 45 & 60\\\midrule
+Vida & 0,130 & 0,140 & 0,249 & 0,730 & 4,81 & 19,80 & 9,18 & 2,00 & 0,816 & 0,278 & 0,143 & 0,138 & 0,166\\
+\bottomrule\end{tabular}\end{table}
+A razão máximo/mínimo na faixa varrida é $\approx152$, sem alterar potência
+média nem duty cycle; a resposta é não monotônica.
+
+\subsection{Incerteza paramétrica (Monte Carlo)}\label{sec:mc}
+$N=150$ amostras log-normais ($\sigma$: $C_s$ 15\%, $G$ 25\%, $\varepsilon$ 5\%,
+$Q_{sol}$ 6\%, $Q_{IR}$ 20\%, $P_{oth}$ 20\%, $2\varepsilon'_f$ 30\%, $h$ 8\%,
+$F$ 5\%):
+\begin{table}[h]\centering\small
+\caption{Vida (anos): percentis e correlação de Spearman com $\ln N$.}
+\begin{tabular}{@{}lccccc@{}}\toprule
+Cenário & P5 & P50 & P95 & $\rho(2\varepsilon'_f)$ & Segundo maior $|\rho|$\\\midrule
+LEO, alinhado ao sol & 0,040 & 0,156 & 0,529 & 0,88 & $C_s$: 0,36\\
+LEO, alinhado ao eclipse & 2,18 & 9,42 & 49,4 & 0,72 & $G$: 0,48\\
+SSO idealizada, pulsado & 0,123 & 0,452 & 1,70 & 0,86 & $h$: 0,29\\
+\bottomrule\end{tabular}\end{table}
+O erro-padrão aproximado de cada $\rho$ é $1/\sqrt{N-1}\approx0{,}08$. O
+parâmetro dominante é $2\varepsilon'_f$, coerente com
+$N\propto(2\varepsilon'_f)^{-1/c}\approx(2\varepsilon'_f)^{2{,}45}$.
+
+\subsection{Estimação: decomposição do viés}\label{sec:ekf}
+A planta ``real'' tem $G$ $+20\%$, $C_s$ $-10\%$, $\varepsilon$ $+5\%$ em relação
+ao filtro, que ainda tem viés de $+10\%$ em $Q_{ext}$. Cinco sementes de ruído.
+\begin{table}[h]\centering\small
+\caption{Razão vida estimada/real (média e faixa) e RMSE de $T_s$.}
+\begin{tabular}{@{}lccc@{}}\toprule
+Caso & Razão & Faixa & RMSE $T_s$ (K)\\\midrule
+Ruído e quantização, sem erro de modelo & 0,752 & 0,712--0,775 & 0,139\\
+Ruído, quantização e erro de modelo (2 sensores) & 0,335 & 0,323--0,349 & 1,41\\
+Idem, só diodo no die & 0,234 & 0,228--0,241 & 2,20\\
+\bottomrule\end{tabular}\end{table}
+O viés é grande neste modelo (razão de 0,23 a 0,75) e menor no modelo estendido
+(Seção~\ref{sec:ekfext}), o que confirma que ele não é uma propriedade do
+filtro, mas do cenário. Independentemente do filtro, um erro de medição de
+$\pm1$~K em $\Delta T=7{,}5$~K gera fatores de $0{,}74$ a $1{,}42$ na vida
+($\pm2$~K: $0{,}56$ a $2{,}14$); em $\Delta T=65$~K o efeito é de $\pm4\%$
+($\pm1$~K).
+
+\subsection{Relação com a análise algébrica do manuscrito original}
+A Tabela~\ref{tab:orig} reproduz, com $c=-0{,}4085$ ($T_{sj}=25$~\textdegree C,
+$f_{cpd}=15{,}2$), as estimativas do manuscrito original. Trata-se de exercício
+algébrico: $\Delta T$ e o valor $2\varepsilon'_f=2{,}887$ não têm origem
+rastreável. As razões $N_f\propto\Delta T^{1/c}$ resultam em fatores 1,73
+($-20\%$) e 0,64 ($+20\%$); a razão entre $2\varepsilon'_f=2{,}887$ e $0{,}65$ é
+38,46.
+\begin{table}[h]\centering\small
+\caption{Reprodução algébrica ($\Delta\gamma=1{,}386\times10^{-3}\Delta T$).}
+\label{tab:orig}
+\begin{tabular}{@{}lcccc@{}}\toprule
+Caso & $\Delta T$ (K) & $\Delta\gamma$ (\%) & $2\varepsilon'_f$ & $N_f$\\\midrule
+LEO & 65 & 9,009 & 2,887 & 2425\\
+LEO & 65 & 9,009 & 0,65 & 63\\
+LEO com TEMS & 20 & 2,772 & 2,887 & 43416\\
+SSO com TEMS & 7,5 & 1,0395 & 2,887 & 478974\\
+SSO & 7,5 & 1,0395 & 0,65 & 12454\\
+\bottomrule\end{tabular}\end{table}
+(``TEMS'' é a sigla do manuscrito original, não definida nele; a definir pelos
+autores.)
+
+\section{Mitigação: escalonamento de carga e DVFS}
+O DVFS é saturado por construção (níveis discretos de P-state); o modelo usa
+dois níveis. Alterar a \emph{fase} da janela de carga mantém o duty cycle e, no
+modelo, a vazão média, mas muda a vida em fatores de 1,65 a 15,6 no modelo
+estendido (Tabela~\ref{tab:anual}), robustos a incerteza paramétrica
+(Tabela~\ref{tab:mcext}), e de $\approx152$ no de referência
+(Tabela~\ref{tab:fase}). Em hardware, a vazão efetiva depende ainda de latência
+de transição e de limites de PLL e regulador, não modelados. A contratividade
+implica que o erro de fase não se acumula entre órbitas, mas não limita o erro
+de dano. \textbf{Não se apresenta lei de controle com garantias}; um MPC com
+restrições \cite{mayne2000} é trabalho futuro. Requisitos preliminares, a
+validar: período de decisão $\le\tau_{die}/5\approx15$~s; orçamento
+computacional do estimador declarado; modo degradado seguro em falha de sensor;
+telemetria sincronizada de $T$, $P$ e eventos para pós-processamento de dano.
+
+\section{Matriz FMECA preliminar}
+Segue-se a ECSS-Q-ST-30-02C \cite{ecss3002} e a MIL-STD-1629A \cite{mil1629}
+(cancelada em 1998). As severidades $S$ são propostas preliminares dos autores,
+não validadas. A ocorrência $O$ é marcada \textbf{ND} (não determinada) onde não
+há dados representativos; o RPN só é calculado após a atribuição de $O$ com dados
+rastreáveis, por equipe multidisciplinar. RPN não substitui critério de
+criticidade para severidades altas.
+\begin{table}[h]\centering\small
+\caption{FMECA preliminar de triagem.}
+\begin{tabular}{@{}p{3.1cm}p{2.6cm}p{2.6cm}cp{1.1cm}p{2.6cm}@{}}\toprule
+Elemento / modo & Causa provável & Efeito & $S$ & $O$ & Detecção\\\midrule
+Esfera BGA: trinca por fadiga & Descasamento de CTE; fluência & Intermitência; abertura & 8 & ND & Continuidade elétrica\\
+Interface solda--pad: fratura de IMC & Crescimento intermetálico & Perda de continuidade & 8 & ND & Ensaio destrutivo amostral\\
+Underfill: delaminação & Degradação de adesão & Concentração de deformação & 8 & ND & Inspeção acústica; ciclagem\\
+PCB: empenamento & Gradientes térmicos & Tração e cisalhamento nas juntas & 7 & ND & Perfilometria; FE\\
+Sistema de medição térmica: deriva/falha & TID; envelhecimento & Estimativa de dano enviesada & 6 & ND & Redundância; teste cruzado\\
+Controlador: SEU/SEL & Radiação & Reinicialização; comando errado & 8 & ND & EDAC; \emph{watchdog}\\
+\bottomrule\end{tabular}\end{table}
+
+\section{Materiais, radiação e termovácuo}
+\textbf{Ligas.} Estudos com SAC dopadas mostram que composição e acabamento
+alteram a confiabilidade, sem estabelecer ordem universal
+\cite{akkara2022,bae2024}. O estudo \cite{depiver2021} caracterizou quatro ligas
+sem chumbo e uma eutética com chumbo quanto à vida em fadiga térmica, estimando
+MTTF; a comparação entre SnPb e SAC depende da faixa de deformação, e não se
+conclui superioridade universal. O estudo \cite{razzaq2025} avaliou
+\emph{layout} de esferas (remoção das fileiras externas) com SAC305 e Sn37Pb sob
+ciclagem entre $-40$ e $125$~\textdegree C, reportando $1{,}67\times$ na vida
+média e redução de 29\% no pico de tensão de von Mises para SAC305, contra
+$1{,}01\times$ e 11\% para Sn37Pb. Esses valores são específicos desse arranjo,
+ensaio e critério de falha, e não comparam o desempenho intrínseco das ligas.
+
+\textbf{Underfill e radiação.} O underfill altera a transferência de carga, mas
+seus efeitos não se resumem a um coeficiente de ductilidade; trocar
+$2\varepsilon'_f$ não é um modelo de delaminação. Resultados de irradiação
+dependem da formulação \cite{wang2024,zimmermann2022}. Dose absorvida e ciclos
+térmicos não são conversíveis sem modelo e dados dedicados. A revisão
+\cite{guan2023} cobre a confiabilidade de juntas SnPb, Sn-base sem chumbo e
+In-base em ambientes extremos (criogenia, radiação intensa e grandes variações
+de temperatura); a extensão de suas conclusões à geometria deste trabalho exige
+verificação no texto integral. Para aceleradores COTS, eventos de evento único
+(SEU/SEL/SEFI) tendem a ser prioritários frente à degradação do polímero;
+\textbf{não são modelados aqui}, assim como vibração de lançamento \cite{gevs},
+\emph{tin whiskers} e a interação vibração$\rightarrow$ciclagem.
+
+\textbf{Desgaseificação.} A ECSS-Q-ST-70-02C \cite{ecss7002} usa como triagem
+TML $<1{,}0\%$ e CVCM $<0{,}10\%$, com $\mathrm{RML}=\mathrm{TML}-\mathrm{WVR}$
+avaliada separadamente quando a TML excede 1,0\% por vapor de água. Esses
+critérios não qualificam a integridade mecânica. Termociclagem em vácuo:
+ECSS-Q-ST-70-04C \cite{ecss7004}; soldagem de alta confiabilidade:
+ECSS-Q-ST-70-38C \cite{ecss7038}.
+
+\section{Limitações e programa de validação}
+\textbf{Limitações.} (i) Parâmetros térmicos, de ductilidade, de sensores e de
+ambiente ($S_0$, $Q_{IR}$, $\alpha_r$) ilustrativos. (ii) Modelo de dois nós,
+sem gradientes locais, albedo, penumbra, arrasto nem variação sazonal de $S_0$;
+sombra cilíndrica e órbita circular. (iii) A atitude é apenas modo de
+apontamento: sem inércia, torques de perturbação ou controle de atitude.
+(iv) Efeméride solar simplificada. (v) Grade de $\beta$ com 34 pontos: a vida
+ainda variava ao refinar (Seção~\ref{sec:ext}), e a grade do Monte Carlo difere
+da fina em até 5,7\%. (vi) Eq.~\ref{eq:eng} provavelmente fora do domínio
+calibrado de $T_{sj}$ e originalmente para SnPb; o dano sazonal é ordem de
+grandeza. (vii) Miner linear. (viii) Sem prova de estabilidade do laço fechado
+com EKF; o estudo de estimação usa dois cenários de $\beta$ e uma planta
+perturbada. (ix) Monte Carlo do modelo estendido com $N=16$ em duas órbitas;
+Monte Carlo do modelo de referência com $N=150$. (x) $\LDNP$ até o canto do
+pacote. (xi) Sem dados de falha, logo sem Weibull ajustado. (xii) A
+Proposição~\ref{prop:inv} vale para os parâmetros nominais.
+
+\textbf{Programa de validação.} 1) Geometria completa (passo, pads, substrato,
+placa). 2) Propriedades dependentes de $T$ com incerteza. 3) Modelo térmico
+orbital acoplado à atitude real e a radiador dedicado, com histórico local de
+junta. 4) FE termomecânica com convergência de malha. 5) Ciclagem térmica com
+monitoramento elétrico contínuo \cite{ipc9701} e análise destrutiva.
+6) Underfill antes e depois de envelhecimento e irradiação. 7) Ajuste de
+Weibull com censura. 8) Ensaio em termovácuo \cite{ecss7004}. 9) Critérios de
+aceitação e margens.
+
+\section{Conclusões}
+Mostrou-se, computacionalmente e sob premissas ilustrativas declaradas, que
+(i) o modelo térmico de dois nós é contrativo em um conjunto invariante
+demonstrado, com contração observada dentro do limite garantido, e localmente
+observável; (ii) a vida anual calculada por \emph{rainflow}--Engelmaier--Miner
+depende da órbita, do modo de apontamento e da fase da carga, com razões
+\emph{mid}/\emph{noon} de 1,65 a 15,6 a duty cycle constante, ordenação mantida
+em todas as amostras do Monte Carlo, e sem atitude ótima universal; (iii) uma
+órbita dawn-dusk com LTAN de 6~h a 500~km tem 102 dias de eclipse por ano; e
+(iv) a vida estimada por temperatura filtrada pode ser subestimada por fatores
+de até 4,3 (modelo de referência) ou ficar próxima da real (modelo estendido,
+fase \emph{noon}), de modo que o viés depende do cenário. Os números absolutos
+não são previsões de vida em missão.
+
+\section*{Disponibilidade de código}
+Todas as tabelas das Seções 4 a 8 são geradas pelos \textit{scripts} em
+\repo{}, versão/commit \texttt{[PREENCHER: hash ou tag usada no envio]}. Os
+parâmetros da Tabela~\ref{tab:prem} são premissas, não dados experimentais.
+
+\begin{thebibliography}{99}\small
+% Entradas marcadas [NAO VERIFICADA] nao puderam ser conferidas em fonte primaria.
+% [NAO VERIFICADA]
+\bibitem{nasa2025} NASA. \emph{How NASA is testing AI to make Earth-observing satellites smarter}, 24 jul. 2025.
+\bibitem{gao2026} U.S. GAO. \emph{Science \& Tech Spotlight: Data Centers in Space}, GAO-26-109012, 28 abr. 2026.
+\bibitem{chen2026} S. Chen, Z. Hua, N. Tziritas, G. Theodoropoulos. Hot AI in Cold Space: Thermal-Crosstalk-Aware Scheduling for Sustainable Orbital AI Clusters. arXiv:2606.26150, 2026.
+% [NAO VERIFICADA]
+\bibitem{ecss6013} ECSS-Q-ST-60-13C Rev.2, \emph{Commercial EEE Components}, 2025.
+% [NAO VERIFICADA]
+\bibitem{ecss6015} ECSS-Q-ST-60-15C Rev.1, \emph{Radiation Hardness Assurance}, 2025.
+\bibitem{ross1991} R. G. Ross Jr. A systems approach to solder joint fatigue in spacecraft electronic packaging. \emph{J. Electronic Packaging}, 113(2):121--128, 1991. doi:10.1115/1.2905377.
+\bibitem{engelmaier1983} W. Engelmaier. Fatigue life of leadless chip carrier solder joints during power cycling. \emph{IEEE Trans. CHMT}, 6(3):232--237, 1983. doi:10.1109/TCHMT.1983.1136183.
+\bibitem{razzaq2025} M. A. Razzaq, M. Meilunas, X. A. Cao, J. Wilcox, A. Ramini. Thermal fatigue behaviors of BGA packages with an optimized solder joint layout. \emph{Electronics}, 14(11):2286, 2025. doi:10.3390/electronics14112286.
+\bibitem{hu2023} X. Hu et al. Effects of voids on thermal fatigue reliability of solder joints on inner rings in ball grid array packaging by finite element analysis. \emph{Micromachines}, 14(3):588, 2023. doi:10.3390/mi14030588.
+\bibitem{apalowo2024} R. K. Apalowo et al. Thermal fatigue life prediction and intermetallic compound behaviour of SAC305 BGA solder joints subject to accelerated thermal cycling test. \emph{Soldering \& Surface Mount Technology}, 36(3):154--164, 2024. doi:10.1108/SSMT-12-2023-0075.
+% [NAO VERIFICADA]
+\bibitem{astm1049} ASTM E1049-85, \emph{Standard Practices for Cycle Counting in Fatigue Analysis}.
+\bibitem{miner1945} M. A. Miner. Cumulative damage in fatigue. \emph{J. Appl. Mech.}, 12(3):A159--A164, 1945. doi:10.1115/1.4009458.
+\bibitem{norris1969} K. C. Norris, A. H. Landzberg. Reliability of controlled collapse interconnections. \emph{IBM J. Res. Dev.}, 13(3):266--271, 1969. doi:10.1147/rd.133.0266.
+\bibitem{weibull1951} W. Weibull. A statistical distribution function of wide applicability. \emph{J. Appl. Mech.}, 18(3):293--297, 1951. doi:10.1115/1.4010337.
+% [NAO VERIFICADA]
+\bibitem{meeker1998} W. Q. Meeker, L. A. Escobar. \emph{Statistical Methods for Reliability Data}. Wiley, 1998.
+% [NAO VERIFICADA]
+\bibitem{vallado} D. A. Vallado. \emph{Fundamentals of Astrodynamics and Applications}. Microcosm/Springer.
+\bibitem{lohmiller1998} W. Lohmiller, J.-J. E. Slotine. On contraction analysis for nonlinear systems. \emph{Automatica}, 34(6):683--696, 1998. doi:10.1016/S0005-1098(98)00019-3.
+\bibitem{reif1999} K. Reif, S. G\"unther, E. Yaz, R. Unbehauen. Stochastic stability of the discrete-time extended Kalman filter. \emph{IEEE Trans. Autom. Control}, 44(4):714--728, 1999. doi:10.1109/9.754809.
+\bibitem{mayne2000} D. Q. Mayne, J. B. Rawlings, C. V. Rao, P. O. M. Scokaert. Constrained model predictive control: stability and optimality. \emph{Automatica}, 36(6):789--814, 2000. doi:10.1016/S0005-1098(99)00214-9.
+\bibitem{markley2014} F. L. Markley, J. L. Crassidis. \emph{Fundamentals of Spacecraft Attitude Determination and Control}. Springer New York. doi:10.1007/978-1-4939-0802-8.
+\bibitem{akkara2022} F. J. Akkara et al. The effect of micro-alloying and surface finishes on the thermal cycling reliability of doped SAC solder alloys. \emph{Materials}, 15(19):6759, 2022. doi:10.3390/ma15196759.
+\bibitem{bae2024} J. Y. Bae et al. Thermal cycling performance of heterogeneous Sn-Ag-Cu solder joint with minor elements addition. In \emph{2024 IEEE 26th EPTC}, pp. 609--615, 2024. doi:10.1109/EPTC62800.2024.10909782.
+\bibitem{depiver2021} J. A. Depiver, S. Mallik, E. H. Amalu. Thermal fatigue life of ball grid array (BGA) solder joints made from different alloy compositions. \emph{Eng. Failure Analysis}, 125:105447, 2021. doi:10.1016/j.engfailanal.2021.105447.
+% [NAO VERIFICADA: nao localizada na Crossref]
+\bibitem{wang2024} P. Wang et al. Experimental study on the effect of gamma rays to the performance of epoxy resin adhesives for spacecraft. \emph{Spacecraft Environment Engineering}, 41(6):735--741, 2024.
+\bibitem{zimmermann2022} J. Zimmermann, T. Schalm, M. Z. Sadeghi, K. U. Schr\"oder. Empirical investigations on the effects of ionizing radiation on epoxy structural adhesives and resins: an overview. \emph{Int. J. Adhesion and Adhesives}, 117:103014, 2022. doi:10.1016/j.ijadhadh.2021.103014.
+\bibitem{guan2023} Q. Guan, C. Hang, S. Li, D. Yu, Y. Ding, X. Wang, Y. Tian. Research progress on the solder joint reliability of electronics using in deep space exploration. \emph{Chin. J. Mech. Eng.}, 36(1), 2023. doi:10.1186/s10033-023-00834-4.
+% [NAO VERIFICADA]
+\bibitem{gevs} NASA. GSFC-STD-7000, \emph{General Environmental Verification Standard (GEVS)}.
+% [NAO VERIFICADA]
+\bibitem{ecss3002} ECSS-Q-ST-30-02C, \emph{FMECA}, 2009.
+% [NAO VERIFICADA]
+\bibitem{mil1629} MIL-STD-1629A, 1980 (cancelada em 1998).
+% [NAO VERIFICADA]
+\bibitem{ecss7002} ECSS-Q-ST-70-02C, \emph{Thermal vacuum outgassing test for the screening of space materials}, 2008.
+% [NAO VERIFICADA]
+\bibitem{ecss7004} ECSS-Q-ST-70-04C, \emph{Thermal testing for the evaluation of space materials, processes, mechanical parts and assemblies}, 2008.
+% [NAO VERIFICADA: pagina da ESA indisponivel na consulta]
+\bibitem{ecss7038} ECSS-Q-ST-70-38C, \emph{High-reliability soldering for surface-mount and mixed technology}.
+% [NAO VERIFICADA]
+\bibitem{ipc9701} IPC-9701B-2022, \emph{Thermal Cycling Test Method for Fatigue Life Characterization of Surface Mount Attachments}.
+\end{thebibliography}
+\end{document}
